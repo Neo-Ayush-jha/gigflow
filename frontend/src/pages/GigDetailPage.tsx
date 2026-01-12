@@ -22,6 +22,7 @@ const GigDetailPage = () => {
   const { toast } = useToast();
   
   const [gig, setGig] = useState<Gig | null>(null);
+  const [bids, setBids] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bidAmount, setBidAmount] = useState('');
@@ -30,21 +31,25 @@ const GigDetailPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const fetchGig = async () => {
+    const fetchGigAndBids = async () => {
       if (!id) return;
       
       try {
         setLoading(true);
-        const data = await gigApi.getGigById(id);
-        setGig(data);
+        const [gigData, bidsData] = await Promise.all([
+          gigApi.getGigById(id),
+          bidApi.getBidsForGig(id),
+        ]);
+        setGig(gigData);
+        setBids(bidsData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch gig');
+        setError(err instanceof Error ? err.message : 'Failed to fetch data');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchGig();
+    fetchGigAndBids();
   }, [id]);
 
   if (loading) {
@@ -190,14 +195,47 @@ const GigDetailPage = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5" />
-                  Bids
+                  Bids ({bids.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="py-8 text-center">
-                  <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                  <p className="mt-4 text-muted-foreground">No bids yet. Be the first to bid!</p>
-                </div>
+                {bids.length > 0 ? (
+                  bids.map((bid) => {
+                    const bidder = typeof bid.freelancerId === 'object' ? bid.freelancerId : null;
+                    return (
+                      <div key={bid._id} className="rounded-lg border p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3 flex-1">
+                            <Avatar className="h-10 w-10">
+                              <AvatarFallback>
+                                {bidder?.name?.charAt(0).toUpperCase() || 'B'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <p className="font-semibold">{bidder?.name || 'Unknown'}</p>
+                              <p className="text-sm text-muted-foreground">{bidder?.email || ''}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-lg">${bid.amount}</p>
+                            <p className="text-xs text-muted-foreground">{bid.deliveryDays} days</p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm text-muted-foreground">{bid.message}</p>
+                        {isOwner && bid.status === 'pending' && (
+                          <Button className="mt-3 w-full" onClick={() => console.log('Hire:', bid._id)}>
+                            Hire
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-8 text-center">
+                    <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                    <p className="mt-4 text-muted-foreground">No bids yet. Be the first to bid!</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

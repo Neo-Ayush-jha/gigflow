@@ -113,9 +113,18 @@ export const gigApi = {
 export interface Bid {
   _id: string;
   gigId: string;
-  bidderId: string;
+  freelancerId: {
+    _id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+    rating?: number;
+    completedJobs?: number;
+    skills?: string[];
+  } | string;
   amount: number;
-  proposal: string;
+  message: string;
+  deliveryDays: number;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: string;
 }
@@ -131,6 +140,10 @@ export const bidApi = {
       method: 'POST',
       body: JSON.stringify(bidData),
     });
+  },
+
+  async getBidsForGig(gigId: string): Promise<Bid[]> {
+    return apiRequest<Bid[]>(`/bids/gig/${gigId}`);
   },
 
   async hireBid(bidId: string): Promise<Bid> {
