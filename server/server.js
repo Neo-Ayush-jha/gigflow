@@ -9,13 +9,27 @@ const connectDB = require("./config/db");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketio(server, { cors: { origin: "*" } });
+const io = socketio(server, { 
+  cors: { 
+    origin: "http://localhost:3000",
+    credentials: true 
+  } 
+});
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:3000",
+  credentials: true
+}));
 
 connectDB();
+
+// Socket.IO middleware - make io available in routes
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/gigs", require("./routes/gigRoutes"));
@@ -27,9 +41,5 @@ io.on("connection", (socket) => {
   });
 });
 
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
-
-server.listen(5000, () => console.log("Server running on 5000"));
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
