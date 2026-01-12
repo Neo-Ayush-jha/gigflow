@@ -40,8 +40,9 @@ exports.createGig = async (req, res) => {
 
 exports.getGigs = async (req, res) => {
   try {
-    const gigs = await Gig.find({ status: 'open' })
-      .populate('clientId', 'name email avatar');
+    const gigs = await Gig.find()
+      .populate('clientId', 'name email')
+      .sort({ createdAt: -1 });
     res.json(gigs);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -51,7 +52,7 @@ exports.getGigs = async (req, res) => {
 exports.getGigById = async (req, res) => {
   try {
     const gig = await Gig.findById(req.params.gigId)
-      .populate('clientId', 'name email avatar bio rating');
+      .populate('clientId', 'name email');
     
     if (!gig) {
       return res.status(404).json({ message: "Gig not found" });

@@ -18,6 +18,8 @@ const GigCard = ({ gig }: GigCardProps) => {
     completed: 'bg-muted text-muted-foreground border-muted',
   };
 
+  const client = typeof gig.clientId === 'object' ? gig.clientId : null;
+
   return (
     <Card className="group overflow-hidden transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1">
       <CardHeader className="pb-3">
@@ -76,10 +78,10 @@ const GigCard = ({ gig }: GigCardProps) => {
         <div className="flex w-full items-center justify-between">
           <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
-              <AvatarFallback>CL</AvatarFallback>
+              <AvatarFallback>{client?.name.charAt(0).toUpperCase() || 'CL'}</AvatarFallback>
             </Avatar>
             <div className="text-sm">
-              <p className="font-medium">Client</p>
+              <p className="font-medium">{client?.name || 'Client'}</p>
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
                 Due {new Date(gig.deadline).toLocaleDateString()}

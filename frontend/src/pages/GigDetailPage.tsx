@@ -1,19 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import BidCard from '@/components/gigs/BidCard';
-import { getGigById, getBidsByGigId, getUserById } from '@/data/mockData';
+import { gigApi, bidApi, Gig } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ArrowLeft, Calendar, Clock, DollarSign, MessageSquare, 
-  Send, Star, CheckCircle, AlertCircle 
+  Send, CheckCircle, AlertCircle, Loader2 
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -22,21 +21,46 @@ const GigDetailPage = () => {
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   
+  const [gig, setGig] = useState<Gig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [bidAmount, setBidAmount] = useState('');
   const [bidMessage, setBidMessage] = useState('');
   const [deliveryDays, setDeliveryDays] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const gig = getGigById(id || '');
-  const bids = getBidsByGigId(id || '');
-  const client = gig ? getUserById(gig.clientId) : null;
+  useEffect(() => {
+    const fetchGig = async () => {
+      if (!id) return;
+      
+      try {
+        setLoading(true);
+        const data = await gigApi.getGigById(id);
+        setGig(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch gig');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  if (!gig) {
+    fetchGig();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error || !gig) {
     return (
       <div className="container mx-auto flex min-h-[60vh] flex-col items-center justify-center px-4">
         <AlertCircle className="h-16 w-16 text-muted-foreground" />
         <h1 className="mt-4 text-2xl font-bold">Gig Not Found</h1>
-        <p className="mt-2 text-muted-foreground">This gig doesn't exist or has been removed.</p>
+        <p className="mt-2 text-muted-foreground">{error || "This gig doesn't exist or has been removed."}</p>
         <Link to="/gigs">
           <Button className="mt-6">Browse Gigs</Button>
         </Link>
@@ -44,8 +68,9 @@ const GigDetailPage = () => {
     );
   }
 
-  const isOwner = user?.id === gig.clientId;
-  const hasAlreadyBid = bids.some(b => b.freelancerId === user?.id);
+  const client = typeof gig.clientId === 'object' ? gig.clientId : null;
+  const clientIdString = typeof gig.clientId === 'object' ? gig.clientId._id : gig.clientId;
+  const isOwner = user?._id === clientIdString;
 
   const handleSubmitBid = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,31 +83,37 @@ const GigDetailPage = () => {
       return;
     }
 
-    setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    toast({
-      title: 'Bid Submitted!',
-      description: 'Your bid has been submitted successfully.',
-    });
-    
-    setBidAmount('');
-    setBidMessage('');
-    setDeliveryDays('');
-    setIsSubmitting(false);
-  };
-
-  const handleHire = (bidId: string) => {
-    toast({
-      title: 'Freelancer Hired!',
-      description: 'The freelancer has been notified and will start working on your project.',
-    });
+    try {
+      setIsSubmitting(true);
+      await bidApi.placeBid({
+        gigId: gig._id,
+        amount: parseFloat(bidAmount),
+        message: bidMessage,
+        deliveryDays: parseInt(deliveryDays),
+      });
+      
+      toast({
+        title: 'Bid Submitted!',
+        description: 'Your bid has been submitted successfully.',
+      });
+      
+      setBidAmount('');
+      setBidMessage('');
+      setDeliveryDays('');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to submit bid',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const statusColors = {
     open: 'bg-primary/10 text-primary border-primary/20',
-    assigned: 'bg-accent/10 text-accent border-accent/20',
+    'in-progress': 'bg-accent/10 text-accent border-accent/20',
     completed: 'bg-muted text-muted-foreground border-muted',
   };
 
@@ -103,7 +134,7 @@ const GigDetailPage = () => {
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-2">
                     <Badge className={statusColors[gig.status]}>
-                      {gig.status === 'assigned' && <CheckCircle className="mr-1 h-3 w-3" />}
+                      {gig.status === 'in-progress' && <CheckCircle className="mr-1 h-3 w-3" />}
                       {gig.status.charAt(0).toUpperCase() + gig.status.slice(1)}
                     </Badge>
                     <CardTitle className="text-2xl">{gig.title}</CardTitle>
@@ -111,10 +142,6 @@ const GigDetailPage = () => {
                       <span className="flex items-center gap-1">
                         <Clock className="h-4 w-4" />
                         Posted {formatDistanceToNow(new Date(gig.createdAt), { addSuffix: true })}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <MessageSquare className="h-4 w-4" />
-                        {gig.bidsCount} bids
                       </span>
                     </div>
                   </div>
@@ -163,25 +190,14 @@ const GigDetailPage = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5" />
-                  Bids ({bids.length})
+                  Bids
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {bids.length > 0 ? (
-                  bids.map((bid) => (
-                    <BidCard 
-                      key={bid.id} 
-                      bid={bid} 
-                      isOwner={isOwner} 
-                      onHire={handleHire}
-                    />
-                  ))
-                ) : (
-                  <div className="py-8 text-center">
-                    <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                    <p className="mt-4 text-muted-foreground">No bids yet. Be the first to bid!</p>
-                  </div>
-                )}
+                <div className="py-8 text-center">
+                  <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground/50" />
+                  <p className="mt-4 text-muted-foreground">No bids yet. Be the first to bid!</p>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -196,27 +212,13 @@ const GigDetailPage = () => {
               <CardContent>
                 <div className="flex items-center gap-3">
                   <Avatar className="h-12 w-12 border-2 border-primary/10">
-                    <AvatarImage src={client?.avatar} />
-                    <AvatarFallback>{client?.name.charAt(0)}</AvatarFallback>
+                    <AvatarFallback>{client?.name.charAt(0).toUpperCase() || 'CL'}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-semibold">{client?.name}</p>
+                    <p className="font-semibold">{client?.name || 'Client'}</p>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Star className="h-4 w-4 fill-accent text-accent" />
-                      <span>{client?.rating} rating</span>
+                      <span>{client?.email || 'Project Owner'}</span>
                     </div>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Jobs Posted</span>
-                    <span className="font-medium">{client?.completedJobs}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Member since</span>
-                    <span className="font-medium">
-                      {new Date(client?.joinedDate || '').toLocaleDateString('en-US', { year: 'numeric', month: 'short' })}
-                    </span>
                   </div>
                 </div>
               </CardContent>
@@ -229,62 +231,54 @@ const GigDetailPage = () => {
                   <CardTitle className="text-lg">Submit Your Bid</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {hasAlreadyBid ? (
-                    <div className="text-center py-4">
-                      <CheckCircle className="mx-auto h-10 w-10 text-primary" />
-                      <p className="mt-2 font-medium">You've already submitted a bid</p>
-                      <p className="text-sm text-muted-foreground">Wait for the client to review your proposal.</p>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleSubmitBid} className="space-y-4">
-                      <div>
-                        <Label htmlFor="amount">Your Bid Amount ($)</Label>
-                        <div className="relative mt-1.5">
-                          <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input
-                            id="amount"
-                            type="number"
-                            placeholder="Enter amount"
-                            value={bidAmount}
-                            onChange={(e) => setBidAmount(e.target.value)}
-                            className="pl-10"
-                            required
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <Label htmlFor="delivery">Delivery Time (days)</Label>
+                  <form onSubmit={handleSubmitBid} className="space-y-4">
+                    <div>
+                      <Label htmlFor="amount">Your Bid Amount ($)</Label>
+                      <div className="relative mt-1.5">
+                        <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
-                          id="delivery"
+                          id="amount"
                           type="number"
-                          placeholder="e.g., 14"
-                          value={deliveryDays}
-                          onChange={(e) => setDeliveryDays(e.target.value)}
-                          className="mt-1.5"
+                          placeholder="Enter amount"
+                          value={bidAmount}
+                          onChange={(e) => setBidAmount(e.target.value)}
+                          className="pl-10"
                           required
                         />
                       </div>
-                      <div>
-                        <Label htmlFor="message">Cover Letter</Label>
-                        <Textarea
-                          id="message"
-                          placeholder="Introduce yourself and explain why you're the best fit..."
-                          value={bidMessage}
-                          onChange={(e) => setBidMessage(e.target.value)}
-                          className="mt-1.5 min-h-[120px]"
-                          required
-                        />
-                      </div>
-                      <Button 
-                        type="submit" 
-                        className="w-full gap-2" 
-                        disabled={isSubmitting}
-                      >
-                        <Send className="h-4 w-4" />
-                        {isSubmitting ? 'Submitting...' : 'Submit Bid'}
-                      </Button>
-                    </form>
-                  )}
+                    </div>
+                    <div>
+                      <Label htmlFor="delivery">Delivery Time (days)</Label>
+                      <Input
+                        id="delivery"
+                        type="number"
+                        placeholder="e.g., 14"
+                        value={deliveryDays}
+                        onChange={(e) => setDeliveryDays(e.target.value)}
+                        className="mt-1.5"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="message">Cover Letter</Label>
+                      <Textarea
+                        id="message"
+                        placeholder="Introduce yourself and explain why you're the best fit..."
+                        value={bidMessage}
+                        onChange={(e) => setBidMessage(e.target.value)}
+                        className="mt-1.5 min-h-[120px]"
+                        required
+                      />
+                    </div>
+                    <Button 
+                      type="submit" 
+                      className="w-full gap-2" 
+                      disabled={isSubmitting}
+                    >
+                      <Send className="h-4 w-4" />
+                      {isSubmitting ? 'Submitting...' : 'Submit Bid'}
+                    </Button>
+                  </form>
                 </CardContent>
               </Card>
             )}

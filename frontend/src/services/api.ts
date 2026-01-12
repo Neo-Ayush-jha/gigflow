@@ -75,9 +75,14 @@ export interface Gig {
   skills: string[];
   deadline: string;
   status: 'open' | 'in-progress' | 'completed';
-  ownerId: string;
+  clientId: {
+    _id: string;
+    name: string;
+    email: string;
+  } | string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  bidsCount?: number;
 }
 
 export const gigApi = {
@@ -85,7 +90,11 @@ export const gigApi = {
     return apiRequest<Gig[]>('/gigs');
   },
 
-  async createGig(gigData: {
+  async getGigById(id: string): Promise<Gig> {
+    return apiRequest<Gig>(`/gigs/${id}`);
+  },
+
+  async createGig(gigData: {    
     title: string;
     description: string;
     category: string;
@@ -115,7 +124,8 @@ export const bidApi = {
   async placeBid(bidData: {
     gigId: string;
     amount: number;
-    proposal: string;
+    message: string;
+    deliveryDays: number;
   }): Promise<Bid> {
     return apiRequest<Bid>('/bids', {
       method: 'POST',

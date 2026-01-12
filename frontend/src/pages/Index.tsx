@@ -1,12 +1,33 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import GigCard from '@/components/gigs/GigCard';
-import { gigs, categories } from '@/data/mockData';
-import { ArrowRight, Briefcase, CheckCircle, Shield, Zap, Users, TrendingUp } from 'lucide-react';
+import { categories } from '@/data/mockData';
+import { gigApi, Gig } from '@/services/api';
+import { ArrowRight, Briefcase, CheckCircle, Shield, Zap, Users, TrendingUp, Loader2 } from 'lucide-react';
 
 const Index = () => {
-  const featuredGigs = gigs.filter(g => g.status === 'open').slice(0, 3);
+  const [featuredGigs, setFeaturedGigs] = useState<Gig[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchGigs = async () => {
+      try {
+        setLoading(true);
+        const data = await gigApi.getGigs();
+        // Get latest 3 open gigs
+        const openGigs = data.filter(g => g.status === 'open').slice(0, 3);
+        setFeaturedGigs(openGigs);
+      } catch (error) {
+        console.error('Failed to fetch gigs:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchGigs();
+  }, []);
 
   const stats = [
     { label: 'Active Freelancers', value: '10K+', icon: Users },
@@ -117,9 +138,22 @@ const Index = () => {
             </Link>
           </div>
           <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {featuredGigs.map((gig) => (
-              <GigCard key={gig.id} gig={gig} />
-            ))}
+            {loading ? (
+              <div className="col-span-full flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : featuredGigs.length > 0 ? (
+              featuredGigs.map((gig) => (
+                <GigCard key={gig._id} gig={gig} />
+              ))
+            ) : (
+              <div className="col-span-full text-center py-12">
+                <p className="text-muted-foreground">No open gigs available at the moment.</p>
+                <Link to="/post-gig">
+                  <Button className="mt-4">Post the First Gig</Button>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </section>
