@@ -10,9 +10,10 @@ import { Label } from '@/components/ui/label';
 import { gigApi, bidApi, Gig } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import socketService from '@/services/socket';
 import { 
   ArrowLeft, Calendar, Clock, DollarSign, MessageSquare, 
-  Send, CheckCircle, AlertCircle, Loader2 
+  Send, CheckCircle, AlertCircle, Loader2, XCircle 
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -29,6 +30,8 @@ const GigDetailPage = () => {
   const [bidMessage, setBidMessage] = useState('');
   const [deliveryDays, setDeliveryDays] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHiring, setIsHiring] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     const fetchGigAndBids = async () => {
@@ -51,6 +54,78 @@ const GigDetailPage = () => {
 
     fetchGigAndBids();
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    socketService.connect();
+
+    const handleNewBid = (data: { bid: any; gigId: string }) => {
+      if (data.gigId === id) {
+        setBids((prevBids) => [data.bid, ...prevBids]);
+        
+        setGig((prevGig) => 
+          prevGig ? { ...prevGig, bidsCount: prevGig.bidsCount + 1 } : prevGig
+        );
+        
+        toast({
+          title: 'New Bid Received!',
+          description: `${data.bid.freelancerId?.name || 'Someone'} placed a bid`,
+        });
+      }
+    };
+
+    const handleBidHired = (data: { bidId: string; gigId: string; status: string }) => {
+      if (data.gigId === id) {
+        setBids((prevBids) =>
+          prevBids.map((bid) =>
+            bid._id === data.bidId
+              ? { ...bid, status: 'accepted' }
+              : { ...bid, status: bid.status === 'pending' ? 'rejected' : bid.status }
+          )
+        );
+        setGig((prevGig) => 
+          prevGig ? { ...prevGig, status: 'in-progress' } : prevGig
+        );
+      }
+    };
+
+    const handleBidRejected = (data: { gigId: string; excludeBidId: string }) => {
+      if (data.gigId === id) {
+        setBids((prevBids) =>
+          prevBids.map((bid) =>
+            bid._id !== data.excludeBidId && bid.status === 'pending'
+              ? { ...bid, status: 'rejected' }
+              : bid
+          )
+        );
+      }
+    };
+
+    const handleGigStatusUpdated = (data: { gigId: string; status: string }) => {
+      if (data.gigId === id) {
+        setGig((prevGig) => 
+          prevGig ? { ...prevGig, status: data.status as any } : prevGig
+        );
+        toast({
+          title: 'Gig Status Updated',
+          description: `Gig is now ${data.status}`,
+        });
+      }
+    };
+
+    socketService.on('bid-created', handleNewBid);
+    socketService.on('bid-hired', handleBidHired);
+    socketService.on('bid-rejected', handleBidRejected);
+    socketService.on('gig-status-updated', handleGigStatusUpdated);
+
+    return () => {
+      socketService.off('bid-created', handleNewBid);
+      socketService.off('bid-hired', handleBidHired);
+      socketService.off('bid-rejected', handleBidRejected);
+      socketService.off('gig-status-updated', handleGigStatusUpdated);
+    };
+  }, [id, toast]);
 
   if (loading) {
     return (
@@ -113,6 +188,48 @@ const GigDetailPage = () => {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleHireBid = async (bidId: string) => {
+    try {
+      setIsHiring(true);
+      await bidApi.hireBid(bidId);
+      
+      toast({
+        title: 'Bid Accepted!',
+        description: 'Freelancer has been hired successfully.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to hire freelancer',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsHiring(false);
+    }
+  };
+
+  const handleCloseGig = async () => {
+    if (!gig) return;
+    
+    try {
+      setIsClosing(true);
+      await gigApi.updateGigStatus(gig._id, 'completed');
+      
+      toast({
+        title: 'Gig Closed!',
+        description: 'The gig has been marked as completed.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to close gig',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsClosing(false);
     }
   };
 
@@ -202,6 +319,11 @@ const GigDetailPage = () => {
                 {bids.length > 0 ? (
                   bids.map((bid) => {
                     const bidder = typeof bid.freelancerId === 'object' ? bid.freelancerId : null;
+                    const statusColors = {
+                      pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+                      accepted: 'bg-green-500/10 text-green-500 border-green-500/20',
+                      rejected: 'bg-red-500/10 text-red-500 border-red-500/20',
+                    };
                     return (
                       <div key={bid._id} className="rounded-lg border p-4">
                         <div className="flex items-start justify-between">
@@ -222,11 +344,20 @@ const GigDetailPage = () => {
                           </div>
                         </div>
                         <p className="mt-3 text-sm text-muted-foreground">{bid.message}</p>
-                        {isOwner && bid.status === 'pending' && (
-                          <Button className="mt-3 w-full" onClick={() => console.log('Hire:', bid._id)}>
-                            Hire
-                          </Button>
-                        )}
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <Badge className={statusColors[bid.status]}>
+                            {bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}
+                          </Badge>
+                          {isOwner && bid.status === 'pending' && gig.status === 'open' && (
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleHireBid(bid._id)}
+                              disabled={isHiring}
+                            >
+                              {isHiring ? 'Hiring...' : 'Hire'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     );
                   })
@@ -261,6 +392,29 @@ const GigDetailPage = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Close Gig - Only for owner */}
+            {isOwner && (gig.status === 'open' || gig.status === 'in-progress') && (
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardTitle className="text-lg">Manage Gig</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button 
+                    variant="destructive" 
+                    className="w-full gap-2"
+                    onClick={handleCloseGig}
+                    disabled={isClosing}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    {isClosing ? 'Closing...' : 'Close Gig'}
+                  </Button>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Closing the gig will mark it as completed and prevent new bids.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Submit Bid */}
             {gig.status === 'open' && !isOwner && (

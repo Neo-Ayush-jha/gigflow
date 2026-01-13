@@ -6,6 +6,7 @@ const {
   getGigById,
   getGigsByClient,
   updateGig,
+  updateGigStatus,
   deleteGig
 } = require("../controllers/gigController");
 
@@ -14,6 +15,7 @@ router.get("/client/my-gigs", auth, getGigsByClient);
 router.get("/:gigId", getGigById);
 router.post("/", auth, createGig);
 router.patch("/:gigId", auth, updateGig);
+router.patch("/:gigId/status", auth, updateGigStatus);
 router.delete("/:gigId", auth, deleteGig);
 
 module.exports = router;

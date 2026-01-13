@@ -20,6 +20,13 @@ exports.createGig = async (req, res) => {
       bidsCount: 0,
     });
 
+    const populatedGig = await Gig.findById(gig._id)
+      .populate('clientId', 'name email');
+
+    req.io.emit('gig-created', {
+      gig: populatedGig,
+    });
+
     res.status(201).json({
       id: gig._id,
       title: gig.title,
@@ -92,6 +99,34 @@ exports.updateGig = async (req, res) => {
     );
 
     res.json(updatedGig);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.updateGigStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const gig = await Gig.findById(req.params.gigId);
+
+    if (!gig) {
+      return res.status(404).json({ message: "Gig not found" });
+    }
+
+    if (gig.clientId.toString() !== req.userId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    gig.status = status;
+    await gig.save();
+
+    // Emit real-time event for gig status update
+    req.io.emit('gig-status-updated', {
+      gigId: gig._id,
+      status: status,
+    });
+
+    res.json({ message: "Gig status updated successfully", gig });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

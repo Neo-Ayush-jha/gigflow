@@ -94,6 +94,10 @@ export const gigApi = {
     return apiRequest<Gig>(`/gigs/${id}`);
   },
 
+  async getMyGigs(): Promise<Gig[]> {
+    return apiRequest<Gig[]>('/gigs/client/my-gigs');
+  },
+
   async createGig(gigData: {    
     title: string;
     description: string;
@@ -105,6 +109,13 @@ export const gigApi = {
     return apiRequest<Gig>('/gigs', {
       method: 'POST',
       body: JSON.stringify(gigData),
+    });
+  },
+
+  async updateGigStatus(id: string, status: 'open' | 'in-progress' | 'completed'): Promise<Gig> {
+    return apiRequest<Gig>(`/gigs/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     });
   },
 };
@@ -150,5 +161,9 @@ export const bidApi = {
     return apiRequest<Bid>(`/bids/${bidId}/hire`, {
       method: 'PATCH',
     });
+  },
+
+  async getMyBids(): Promise<Bid[]> {
+    return apiRequest<Bid[]>(`/bids/freelancer/my-bids`);
   },
 };

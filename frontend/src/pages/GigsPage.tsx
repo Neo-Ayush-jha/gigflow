@@ -9,6 +9,7 @@ import { categories } from '@/data/mockData';
 import { gigApi, Gig } from '@/services/api';
 import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import socketService from '@/services/socket';
 
 const GigsPage = () => {
   const { toast } = useToast();
@@ -39,6 +40,41 @@ const GigsPage = () => {
     };
 
     fetchGigs();
+  }, [toast]);
+
+  // Socket.IO real-time updates
+  useEffect(() => {
+    // Connect socket
+    socketService.connect();
+
+    // Listen for new gigs
+    const handleNewGig = (data: { gig: Gig }) => {
+      setGigs((prevGigs) => [data.gig, ...prevGigs]);
+      toast({
+        title: 'New Gig Posted!',
+        description: data.gig.title,
+      });
+    };
+
+    // Listen for bid updates to update bidsCount
+    const handleNewBid = (data: { gigId: string }) => {
+      setGigs((prevGigs) =>
+        prevGigs.map((gig) =>
+          gig._id === data.gigId
+            ? { ...gig, bidsCount: gig.bidsCount + 1 }
+            : gig
+        )
+      );
+    };
+
+    socketService.on('gig-created', handleNewGig);
+    socketService.on('bid-created', handleNewBid);
+
+    // Cleanup
+    return () => {
+      socketService.off('gig-created', handleNewGig);
+      socketService.off('bid-created', handleNewBid);
+    };
   }, [toast]);
 
   const filteredGigs = useMemo(() => {

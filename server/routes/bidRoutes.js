@@ -12,7 +12,7 @@ const {
 router.post("/", auth, placeBid);
 router.get("/gig/:gigId", getBidsForGig);
 router.get("/freelancer/my-bids", auth, getBidsForFreelancer);
-router.patch("/:bidId/accept", auth, hireBid);
+router.patch("/:bidId/hire", auth, hireBid);
 router.patch("/:bidId/reject", auth, rejectBid);
 router.delete("/:bidId", auth, withdrawBid);
 

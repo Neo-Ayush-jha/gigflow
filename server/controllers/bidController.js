@@ -15,7 +15,6 @@ exports.placeBid = async (req, res) => {
       return res.status(404).json({ message: "Gig not found" });
     }
 
-    // Check if freelancer already bid on this gig
     const existingBid = await Bid.findOne({ gigId, freelancerId: req.userId });
     if (existingBid) {
       return res.status(400).json({ message: "You already bid on this gig" });
@@ -30,8 +29,15 @@ exports.placeBid = async (req, res) => {
       status: 'pending',
     });
 
-    // Increment bidsCount
     await Gig.findByIdAndUpdate(gigId, { $inc: { bidsCount: 1 } });
+
+    const populatedBid = await Bid.findById(bid._id)
+      .populate('freelancerId', 'name email avatar rating completedJobs skills');
+
+    req.io.emit('bid-created', {
+      bid: populatedBid,
+      gigId: gigId,
+    });
 
     res.status(201).json({
       id: bid._id,
@@ -84,20 +90,28 @@ exports.hireBid = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // Update gig status and set freelancer
     await Gig.findByIdAndUpdate(bid.gigId, { status: 'in-progress' });
 
-    // Accept this bid
     bid.status = 'accepted';
     await bid.save();
 
-    // Reject all other bids for this gig
     await Bid.updateMany(
       { gigId: bid.gigId, _id: { $ne: req.params.bidId } },
       { status: 'rejected' }
     );
 
-    // Emit event to freelancer
+    req.io.emit('bid-hired', {
+      bidId: bid._id,
+      gigId: bid.gigId,
+      freelancerId: bid.freelancerId._id,
+      status: 'accepted',
+    });
+
+    req.io.emit('bid-rejected', {
+      gigId: bid.gigId,
+      excludeBidId: bid._id,
+    });
+
     req.io.to(bid.freelancerId._id.toString()).emit('bid-accepted', {
       message: 'Your bid has been accepted!',
       gigId: bid.gigId,
@@ -151,7 +165,6 @@ exports.withdrawBid = async (req, res) => {
 
     await Bid.findByIdAndDelete(req.params.bidId);
 
-    // Decrement bidsCount
     await Gig.findByIdAndUpdate(bid.gigId, { $inc: { bidsCount: -1 } });
 
     res.json({ message: 'Bid withdrawn' });
