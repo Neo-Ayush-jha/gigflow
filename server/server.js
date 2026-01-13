@@ -10,44 +10,28 @@ const connectDB = require("./config/db");
 const app = express();
 const server = http.createServer(app);
 
-// CORS Configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001', 
-      'https://gigflow-mu.vercel.app',
-      'https://gigflow-pnkh.onrender.com'
-    ];
-    
-    // Allow requests with no origin (mobile apps, Postman, etc)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Set-Cookie'],
-  preflightContinue: false,
-  optionsSuccessStatus: 204
-};
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 
-const io = socketio(server, { 
-  cors: corsOptions
-});
+app.options("*", cors({
+  origin: true,
+  credentials: true
+}));
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors(corsOptions));
 
 connectDB();
 
-// Socket.IO middleware - make io available in routes
+const io = socketio(server, {
+  cors: {
+    origin: true,
+    credentials: true
+  }
+});
+
 app.use((req, res, next) => {
   req.io = io;
   next();
