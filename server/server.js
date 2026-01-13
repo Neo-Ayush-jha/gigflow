@@ -14,7 +14,8 @@ const server = http.createServer(app);
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://gigflow-pnkh.onrender.com'
+  'https://gigflow-pnkh.onrender.com',
+  'https://gigflow-mu.vercel.app'
 ];
 
 const io = socketio(server, { 
