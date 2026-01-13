@@ -10,63 +10,35 @@ const connectDB = require("./config/db");
 const app = express();
 const server = http.createServer(app);
 
-// Allow both localhost and production domains
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'https://gigflow-pnkh.onrender.com',
-  'https://gigflow-mu.vercel.app'
-];
-
-const io = socketio(server, { 
-  cors: { 
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true 
-  } 
-});
-
-app.use(express.json());
-app.use(cookieParser());
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'https://gigflow-mu.vercel.app'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // ✅ FIX
+app.use(express.json());
+app.use(cookieParser());
+
+const io = socketio(server, {
+  cors: {
+    origin: corsOptions.origin,
+    credentials: true
+  }
+});
 
 connectDB();
 
-// Socket.IO middleware - make io available in routes
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
-
-// Handle CORS preflight requests
-app.options('*', cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/gigs", require("./routes/gigRoutes"));
@@ -79,4 +51,6 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () =>
+  console.log(`Server running on port ${PORT}`)
+);
