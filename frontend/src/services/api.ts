@@ -1,5 +1,5 @@
 // Base API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://gigflow-pnkh.onrender.com/api';
 
 interface ApiResponse<T> {
   data?: T;
@@ -14,6 +14,7 @@ async function apiRequest<T>(
 ): Promise<T> {
   const config: RequestInit = {
     ...options,
+    method: options.method || 'GET',
     headers: {
       'Content-Type': 'application/json',
       ...options.headers,
@@ -94,10 +95,6 @@ export const gigApi = {
     return apiRequest<Gig>(`/gigs/${id}`);
   },
 
-  async getMyGigs(): Promise<Gig[]> {
-    return apiRequest<Gig[]>('/gigs/client/my-gigs');
-  },
-
   async createGig(gigData: {    
     title: string;
     description: string;
@@ -118,12 +115,16 @@ export const gigApi = {
       body: JSON.stringify({ status }),
     });
   },
+
+  async getMyGigs(): Promise<Gig[]> {
+    return apiRequest<Gig[]>('/gigs/client/my-gigs');
+  },
 };
 
 // Bid API
 export interface Bid {
   _id: string;
-  gigId: string;
+  gigId: string | Gig;
   freelancerId: {
     _id: string;
     name: string;
@@ -157,13 +158,13 @@ export const bidApi = {
     return apiRequest<Bid[]>(`/bids/gig/${gigId}`);
   },
 
+  async getBidsForFreelancer(): Promise<Bid[]> {
+    return apiRequest<Bid[]>('/bids/freelancer/my-bids');
+  },
+
   async hireBid(bidId: string): Promise<Bid> {
     return apiRequest<Bid>(`/bids/${bidId}/hire`, {
       method: 'PATCH',
     });
-  },
-
-  async getMyBids(): Promise<Bid[]> {
-    return apiRequest<Bid[]>(`/bids/freelancer/my-bids`);
   },
 };

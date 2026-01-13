@@ -24,7 +24,13 @@ exports.register = async (req, res) => {
     });
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-    res.cookie("token", token, { httpOnly: true });
+    res.cookie("token", token, { 
+      httpOnly: true, 
+      sameSite: 'lax',
+      secure: false, // Set to true in production with HTTPS
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
 
     res.status(201).json({
       id: user._id,
@@ -52,7 +58,13 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-    res.cookie("token", token, { httpOnly: true });
+    res.cookie("token", token, { 
+      httpOnly: true, 
+      sameSite: 'lax',
+      secure: false, // Set to true in production with HTTPS
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     
     res.json({
       id: user._id,

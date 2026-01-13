@@ -9,9 +9,23 @@ const connectDB = require("./config/db");
 
 const app = express();
 const server = http.createServer(app);
+
+// Allow both localhost and production domains
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://gigflow-pnkh.onrender.com'
+];
+
 const io = socketio(server, { 
   cors: { 
-    origin: "http://localhost:3000",
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true 
   } 
 });
@@ -19,8 +33,16 @@ const io = socketio(server, {
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
-  origin: "http://localhost:3000",
-  credentials: true
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 connectDB();
@@ -30,6 +52,20 @@ app.use((req, res, next) => {
   req.io = io;
   next();
 });
+
+// Handle CORS preflight requests
+app.options('*', cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/gigs", require("./routes/gigRoutes"));

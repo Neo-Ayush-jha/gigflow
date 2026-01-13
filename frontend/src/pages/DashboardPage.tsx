@@ -1,35 +1,133 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import { gigApi, bidApi, Gig, Bid } from '@/services/api';
 import socketService from '@/services/socket';
-import { useToast } from '@/hooks/use-toast';
-import {
-  Briefcase,
-  DollarSign,
-  Star,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  PlusCircle,
-  MessageSquare,
+import { 
+  Briefcase, DollarSign, Star, Clock, 
+  CheckCircle, AlertCircle, PlusCircle, MessageSquare, Loader2
 } from 'lucide-react';
 
 const DashboardPage = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('my-gigs');
+  
   const [myGigs, setMyGigs] = useState<Gig[]>([]);
   const [myBids, setMyBids] = useState<Bid[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadingGigs, setLoadingGigs] = useState(true);
+  const [loadingBids, setLoadingBids] = useState(true);
 
-  if (!user) {
+  // Fetch user's gigs
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const fetchMyGigs = async () => {
+      try {
+        setLoadingGigs(true);
+        const data = await gigApi.getMyGigs();
+        setMyGigs(data);
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to load your gigs',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoadingGigs(false);
+      }
+    };
+
+    fetchMyGigs();
+  }, [isAuthenticated, toast]);
+
+  // Fetch user's bids
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const fetchMyBids = async () => {
+      try {
+        setLoadingBids(true);
+        const data = await bidApi.getBidsForFreelancer();
+        setMyBids(data);
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: 'Failed to load your bids',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoadingBids(false);
+      }
+    };
+
+    fetchMyBids();
+  }, [isAuthenticated, toast]);
+
+  // Socket.IO real-time updates
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    socketService.connect();
+
+    // Listen for new gigs created by user
+    const handleGigCreated = (data: { gig: Gig }) => {
+      setMyGigs((prev) => [data.gig, ...prev]);
+      toast({
+        title: 'Gig Created!',
+        description: data.gig.title,
+      });
+    };
+
+    // Listen for gig status updates
+    const handleGigStatusUpdated = (data: { gigId: string; status: string }) => {
+      setMyGigs((prev) =>
+        prev.map((gig) =>
+          gig._id === data.gigId ? { ...gig, status: data.status as any } : gig
+        )
+      );
+    };
+
+    // Listen for new bid on user's gig
+    const handleBidCreated = (data: { bid: Bid; gigId: string }) => {
+      setMyGigs((prev) =>
+        prev.map((gig) =>
+          gig._id === data.gigId
+            ? { ...gig, bidsCount: (gig.bidsCount || 0) + 1 }
+            : gig
+        )
+      );
+    };
+
+    // Listen for bid status updates (hired/rejected)
+    const handleBidHired = (data: { bidId: string; gigId: string; status: string }) => {
+      setMyBids((prev) =>
+        prev.map((bid) =>
+          bid._id === data.bidId ? { ...bid, status: data.status as any } : bid
+        )
+      );
+    };
+
+    socketService.on('gig-created', handleGigCreated);
+    socketService.on('gig-status-updated', handleGigStatusUpdated);
+    socketService.on('bid-created', handleBidCreated);
+    socketService.on('bid-hired', handleBidHired);
+
+    return () => {
+      socketService.off('gig-created', handleGigCreated);
+      socketService.off('gig-status-updated', handleGigStatusUpdated);
+      socketService.off('bid-created', handleBidCreated);
+      socketService.off('bid-hired', handleBidHired);
+    };
+  }, [isAuthenticated, toast]);
+
+  if (!isAuthenticated) {
     return (
       <div className="container mx-auto flex min-h-[60vh] flex-col items-center justify-center px-4">
         <AlertCircle className="h-16 w-16 text-muted-foreground" />
@@ -42,153 +140,43 @@ const DashboardPage = () => {
     );
   }
 
-  // Initial fetch
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
-      try {
-        setLoading(true);
-        const [gigsResp, bidsResp] = await Promise.all([
-          gigApi.getMyGigs(),
-          bidApi.getMyBids(),
-        ]);
-        setMyGigs(gigsResp || []);
-        setMyBids(bidsResp || []);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load dashboard data';
-        setError(message);
-        toast({ title: 'Error', description: message, variant: 'destructive' });
-      } finally {
-        setLoading(false);
-      }
-    };
+  const stats = [
+    { 
+      label: 'Active Gigs', 
+      value: myGigs.filter(g => g.status === 'open').length, 
+      icon: Briefcase, 
+      color: 'text-primary' 
+    },
+    { 
+      label: 'Pending Bids', 
+      value: myBids.filter(b => b.status === 'pending').length, 
+      icon: Clock, 
+      color: 'text-accent' 
+    },
+    { 
+      label: 'Hired', 
+      value: myBids.filter(b => b.status === 'accepted').length, 
+      icon: CheckCircle, 
+      color: 'text-green-500' 
+    },
+    { 
+      label: 'Total Earnings', 
+      value: `$${myBids
+        .filter(b => b.status === 'accepted')
+        .reduce((sum, bid) => sum + bid.amount, 0)}`, 
+      icon: DollarSign, 
+      color: 'text-primary' 
+    },
+  ];
 
-    fetchData();
-  }, [user, toast]);
-
-  // Live updates via Socket.IO
-  useEffect(() => {
-    if (!user) return;
-    socketService.connect();
-
-    const handleGigCreated = (data: { gig: Gig }) => {
-      const clientId = typeof data.gig.clientId === 'object' ? data.gig.clientId?._id : data.gig.clientId;
-      if (clientId === user._id) {
-        setMyGigs((prev) => [data.gig, ...prev]);
-      }
-    };
-
-    const handleBidCreated = (data: { bid: Bid; gigId: string }) => {
-      const freelancerId = typeof data.bid.freelancerId === 'object' ? data.bid.freelancerId._id : data.bid.freelancerId;
-      if (freelancerId === user._id) {
-        setMyBids((prev) => [data.bid, ...prev]);
-      }
-
-      setMyGigs((prev) =>
-        prev.map((gig) =>
-          gig._id === data.gigId ? { ...gig, bidsCount: (gig.bidsCount || 0) + 1 } : gig
-        )
-      );
-    };
-
-    const handleBidHired = (data: { bidId: string; gigId: string }) => {
-      setMyBids((prev) =>
-        prev.map((bid) => (bid._id === data.bidId ? { ...bid, status: 'accepted' } : bid))
-      );
-    };
-
-    const handleBidRejected = (data: { gigId: string; excludeBidId: string }) => {
-      setMyBids((prev) =>
-        prev.map((bid) =>
-          bid.gigId === data.gigId && bid._id !== data.excludeBidId && bid.status === 'pending'
-            ? { ...bid, status: 'rejected' }
-            : bid
-        )
-      );
-    };
-
-    const handleGigStatusUpdated = (data: { gigId: string; status: string }) => {
-      setMyGigs((prev) =>
-        prev.map((gig) => (gig._id === data.gigId ? { ...gig, status: data.status as any } : gig))
-      );
-    };
-
-    socketService.on('gig-created', handleGigCreated);
-    socketService.on('bid-created', handleBidCreated);
-    socketService.on('bid-hired', handleBidHired);
-    socketService.on('bid-rejected', handleBidRejected);
-    socketService.on('gig-status-updated', handleGigStatusUpdated);
-
-    return () => {
-      socketService.off('gig-created', handleGigCreated);
-      socketService.off('bid-created', handleBidCreated);
-      socketService.off('bid-hired', handleBidHired);
-      socketService.off('bid-rejected', handleBidRejected);
-      socketService.off('gig-status-updated', handleGigStatusUpdated);
-    };
-  }, [user]);
-
-  const stats = useMemo(() => {
-    return [
-      {
-        label: 'Active Gigs',
-        value: myGigs.filter((g) => g.status === 'open' || g.status === 'in-progress').length,
-        icon: Briefcase,
-        color: 'text-primary',
-      },
-      {
-        label: 'Pending Bids',
-        value: myBids.filter((b) => b.status === 'pending').length,
-        icon: Clock,
-        color: 'text-accent',
-      },
-      {
-        label: 'Accepted Bids',
-        value: myBids.filter((b) => b.status === 'accepted').length,
-        icon: CheckCircle,
-        color: 'text-primary',
-      },
-      {
-        label: 'Total Bids',
-        value: myBids.length,
-        icon: MessageSquare,
-        color: 'text-primary',
-      },
-    ];
-  }, [myGigs, myBids]);
-
-  const statusColors: Record<string, string> = {
-    open: 'bg-primary/10 text-primary',
-    'in-progress': 'bg-accent/10 text-accent',
-    completed: 'bg-muted text-muted-foreground',
-    pending: 'bg-muted text-muted-foreground',
-    accepted: 'bg-primary/10 text-primary',
-    rejected: 'bg-destructive/10 text-destructive',
+  const statusColors = {
+    open: 'bg-blue-500/10 text-blue-500',
+    'in-progress': 'bg-yellow-500/10 text-yellow-500',
+    completed: 'bg-green-500/10 text-green-500',
+    pending: 'bg-yellow-500/10 text-yellow-500',
+    accepted: 'bg-green-500/10 text-green-500',
+    rejected: 'bg-red-500/10 text-red-500',
   };
-
-  const displayRating = (user as any)?.rating ?? '—';
-  const displayCompletedJobs = (user as any)?.completedJobs ?? 0;
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading dashboard...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto flex min-h-[60vh] flex-col items-center justify-center px-4">
-        <AlertCircle className="h-16 w-16 text-destructive" />
-        <h1 className="mt-4 text-2xl font-bold">Dashboard Error</h1>
-        <p className="mt-2 text-muted-foreground">{error}</p>
-        <Button className="mt-6" onClick={() => window.location.reload()}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-muted/20 py-8">
@@ -197,16 +185,16 @@ const DashboardPage = () => {
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <Avatar className="h-16 w-16 border-2 border-primary/20">
-              <AvatarImage src={(user as any).avatar} />
-              <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+              <AvatarImage src={user?.avatar} />
+              <AvatarFallback>{user?.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <h1 className="text-2xl font-bold">Welcome back, {user.name.split(' ')[0]}!</h1>
+              <h1 className="text-2xl font-bold">Welcome back, {user?.name.split(' ')[0]}!</h1>
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Star className="h-4 w-4 fill-accent text-accent" />
-                <span>{displayRating} rating</span>
+                <span>{user?.rating || 0} rating</span>
                 <span>•</span>
-                <span>{displayCompletedJobs} jobs completed</span>
+                <span>{user?.completedJobs || 0} jobs completed</span>
               </div>
             </div>
           </div>
@@ -249,14 +237,18 @@ const DashboardPage = () => {
           </TabsList>
 
           <TabsContent value="my-gigs" className="space-y-4">
-            {myGigs.length > 0 ? (
+            {loadingGigs ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : myGigs.length > 0 ? (
               myGigs.map((gig) => (
-                <Card key={gig._id} className="shadow-card transition-all hover:shadow-card-hover">
+                <Card key={gig._id} className="shadow-card transition-all hover:shadow-lg">
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Badge className={statusColors[gig.status] || 'bg-muted text-muted-foreground'}>
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge className={statusColors[gig.status]}>
                             {gig.status.charAt(0).toUpperCase() + gig.status.slice(1)}
                           </Badge>
                           <Badge variant="outline">{gig.category}</Badge>
@@ -266,15 +258,20 @@ const DashboardPage = () => {
                             {gig.title}
                           </h3>
                         </Link>
-                        <p className="text-sm text-muted-foreground line-clamp-1">{gig.description}</p>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground line-clamp-1">
+                          {gig.description}
+                        </p>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                           <span className="flex items-center gap-1">
                             <DollarSign className="h-4 w-4" />
                             ${gig.budget.min} - ${gig.budget.max}
                           </span>
                           <span className="flex items-center gap-1">
                             <MessageSquare className="h-4 w-4" />
-                            {gig.bidsCount ?? 0} bids
+                            {gig.bidsCount || 0} bids
+                          </span>
+                          <span className="text-xs">
+                            Posted {new Date(gig.createdAt).toLocaleDateString()}
                           </span>
                         </div>
                       </div>
@@ -305,36 +302,33 @@ const DashboardPage = () => {
           </TabsContent>
 
           <TabsContent value="my-bids" className="space-y-4">
-            {myBids.length > 0 ? (
+            {loadingBids ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : myBids.length > 0 ? (
               myBids.map((bid) => {
-                const gigRef = typeof bid.gigId === 'object' ? bid.gigId : null;
-                const gigId = gigRef?._id || (bid.gigId as string);
-                const gigTitle = gigRef?.title || 'Gig';
-                const clientName = gigRef && typeof gigRef.clientId === 'object' ? gigRef.clientId.name : 'Client';
-                const clientAvatar = gigRef && typeof gigRef.clientId === 'object' ? (gigRef.clientId as any).avatar : undefined;
-
+                const gig = typeof bid.gigId === 'object' ? bid.gigId : null;
+                const gigTitle = gig?.title || 'Loading...';
+                const gigId = typeof bid.gigId === 'string' ? bid.gigId : gig?._id;
+                
                 return (
-                  <Card key={bid._id} className="shadow-card transition-all hover:shadow-card-hover">
+                  <Card key={bid._id} className="shadow-card transition-all hover:shadow-lg">
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <Badge className={statusColors[bid.status]}>
                               {bid.status === 'accepted' && <CheckCircle className="mr-1 h-3 w-3" />}
                               {bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}
                             </Badge>
                           </div>
                           <Link to={`/gigs/${gigId}`}>
-                            <h3 className="text-lg font-semibold hover:text-primary transition-colors">{gigTitle}</h3>
+                            <h3 className="text-lg font-semibold hover:text-primary transition-colors">
+                              {gigTitle}
+                            </h3>
                           </Link>
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={clientAvatar} />
-                              <AvatarFallback>{clientName.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm text-muted-foreground">Client: {clientName}</span>
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                             <span className="flex items-center gap-1 font-semibold text-primary">
                               <DollarSign className="h-4 w-4" />
                               Your bid: ${bid.amount}
@@ -343,7 +337,20 @@ const DashboardPage = () => {
                               <Clock className="h-4 w-4" />
                               {bid.deliveryDays} days delivery
                             </span>
+                            <span className="text-xs">
+                              Bid placed {new Date(bid.createdAt).toLocaleDateString()}
+                            </span>
                           </div>
+                          {bid.status === 'accepted' && (
+                            <div className="mt-2 rounded-lg bg-green-500/10 p-2 text-sm text-green-600">
+                              ✓ Your bid has been accepted! Start working on the project.
+                            </div>
+                          )}
+                          {bid.status === 'rejected' && (
+                            <div className="mt-2 rounded-lg bg-red-500/10 p-2 text-sm text-red-600">
+                              ✕ Your bid was not selected for this gig.
+                            </div>
+                          )}
                         </div>
                         <Link to={`/gigs/${gigId}`}>
                           <Button variant="outline" size="sm">
@@ -362,7 +369,9 @@ const DashboardPage = () => {
                   <h3 className="mt-4 text-lg font-semibold">No bids yet</h3>
                   <p className="mt-2 text-muted-foreground">Start bidding on gigs to grow your freelance career.</p>
                   <Link to="/gigs">
-                    <Button className="mt-6 gap-2">Browse Gigs</Button>
+                    <Button className="mt-6 gap-2">
+                      Browse Gigs
+                    </Button>
                   </Link>
                 </CardContent>
               </Card>
