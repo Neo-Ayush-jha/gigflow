@@ -10,28 +10,28 @@ const connectDB = require("./config/db");
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+// CORS Configuration - Allow all origins
+const corsOptions = {
+  origin: true, // Allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Set-Cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
 
-app.options("*", cors({
-  origin: true,
-  credentials: true
-}));
+const io = socketio(server, { 
+  cors: corsOptions
+});
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(cors(corsOptions));
 
 connectDB();
 
-const io = socketio(server, {
-  cors: {
-    origin: true,
-    credentials: true
-  }
-});
-
+// Socket.IO middleware - make io available in routes
 app.use((req, res, next) => {
   req.io = io;
   next();
