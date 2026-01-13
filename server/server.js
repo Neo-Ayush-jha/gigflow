@@ -10,31 +10,44 @@ const connectDB = require("./config/db");
 const app = express();
 const server = http.createServer(app);
 
+// CORS Configuration
 const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'https://gigflow-mu.vercel.app'
-  ],
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001', 
+      'https://gigflow-mu.vercel.app',
+      'https://gigflow-pnkh.onrender.com'
+    ];
+    
+    // Allow requests with no origin (mobile apps, Postman, etc)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Set-Cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // ✅ FIX
+const io = socketio(server, { 
+  cors: corsOptions
+});
+
 app.use(express.json());
 app.use(cookieParser());
-
-const io = socketio(server, {
-  cors: {
-    origin: corsOptions.origin,
-    credentials: true
-  }
-});
+app.use(cors(corsOptions));
 
 connectDB();
 
+// Socket.IO middleware - make io available in routes
 app.use((req, res, next) => {
   req.io = io;
   next();
@@ -51,6 +64,4 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () =>
-  console.log(`Server running on port ${PORT}`)
-);
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
