@@ -46,12 +46,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
+      // Token ko bhi localStorage mein store kar rahe hain
+      if (response.token) {
+        localStorage.setItem('token', response.token);
+      }
     }
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     // If you have a logout endpoint
     authApi.logout().catch(() => {
       // Ignore errors
@@ -69,6 +74,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
+      // Token ko bhi localStorage mein store kar rahe hain
+      if (response.token) {
+        localStorage.setItem('token', response.token);
+      }
     }
   };
 
